@@ -16,7 +16,7 @@ variable "host" {
 variable "port" {
   description = "The database cluster port to connect"
   type        = string
-  default     = "5432"
+  default     = "1433"
 }
 
 variable "database" {
