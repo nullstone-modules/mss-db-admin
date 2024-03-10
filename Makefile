@@ -7,11 +7,11 @@ tools:
 
 build:
 	mkdir -p ./aws/tf/files
-	GOOS=linux GOARCH=amd64 go build -o ./aws/tf/files/mss-db-admin ./aws/
+	GOOS=linux GOARCH=amd64 go build -tags lambda.norpc -o ./aws/tf/files/bootstrap ./aws/
 
 package: tools
 	cd ./aws/tf \
-		&& build-lambda-zip --output files/mss-db-admin.zip files/mss-db-admin \
+		&& build-lambda-zip --output files/mss-db-admin.zip files/bootstrap \
 		&& tar -cvzf aws-module.tgz *.tf files/mss-db-admin.zip \
 		&& mv aws-module.tgz ../../
 
