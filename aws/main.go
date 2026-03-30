@@ -4,14 +4,16 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net/url"
+	"os"
+
 	"github.com/aws/aws-lambda-go/lambda"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
+	_ "github.com/microsoft/go-mssqldb"
 	"github.com/nullstone-modules/mss-db-admin/sqlserver"
 	"github.com/nullstone-modules/mss-db-admin/workflows"
-	"net/url"
-	"os"
 )
 
 const (
@@ -37,7 +39,7 @@ func HandleRequest(ctx context.Context, event AdminEvent) error {
 		return err
 	}
 
-	db, err := sql.Open("postgres", connUrl)
+	db, err := sql.Open("sqlserver", connUrl)
 	if err != nil {
 		return fmt.Errorf("error connecting to db: %w", err)
 	}
@@ -50,7 +52,6 @@ func HandleRequest(ctx context.Context, event AdminEvent) error {
 		if newDatabase.Name == "" {
 			return fmt.Errorf("cannot create database: databaseName is required")
 		}
-		newDatabase.Owner = newDatabase.Name
 		return workflows.EnsureDatabase(db, newDatabase)
 	case eventTypeCreateUser:
 		newUser := sqlserver.Role{}
@@ -79,6 +80,7 @@ func HandleRequest(ctx context.Context, event AdminEvent) error {
 		if err != nil {
 			return fmt.Errorf("error connecting to app db %q: %w", database.Name, err)
 		}
+		defer appDb.Close()
 
 		return workflows.GrantDbAccess(db, appDb, user, database)
 	default:
@@ -89,11 +91,14 @@ func HandleRequest(ctx context.Context, event AdminEvent) error {
 func getAppDb(connUrl string, databaseName string) (*sql.DB, error) {
 	u, err := url.Parse(connUrl)
 	if err != nil {
-		return nil, fmt.Errorf("invalid connection url %q: %w", connUrl, err)
+		return nil, fmt.Errorf("invalid connection url: %w", err)
 	}
-	u.Path = fmt.Sprintf("/%s", url.PathEscape(databaseName))
+	q := u.Query()
+	q.Set("database", databaseName)
+	u.RawQuery = q.Encode()
+	u.Path = ""
 
-	return sql.Open("postgres", u.String())
+	return sql.Open("sqlserver", u.String())
 }
 
 func getConnectionUrl(ctx context.Context) (string, error) {

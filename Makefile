@@ -13,10 +13,14 @@ package: tools
 	# Package aws module using build-lambda-zip which produces a viable package from any OS
 	cd ./aws/tf && build-lambda-zip --output files/mss-db-admin.zip files/bootstrap
 
-acc: acc-up acc-run acc-down
+acc: acc-up acc-wait acc-run acc-down
 
 acc-up:
 	cd acc && docker-compose -p mss-db-admin-acc up -d db
+
+acc-wait:
+	@echo "Waiting for SQL Server to start..."
+	@sleep 15
 
 acc-run:
 	ACC=1 gotestsum ./acc/...

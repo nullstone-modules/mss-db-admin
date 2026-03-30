@@ -2,9 +2,9 @@ version: '3.8'
 
 services:
   db:
-    image: postgres
+    image: mcr.microsoft.com/mssql/server:2022-latest
     ports:
-      - 8432:5432
+      - 1433:1433
     environment:
-      - POSTGRES_USER=pda
-      - POSTGRES_PASSWORD=pda
+      - ACCEPT_EULA=Y
+      - MSSQL_SA_PASSWORD=YourStr0ng!Pass

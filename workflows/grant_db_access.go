@@ -3,45 +3,41 @@ package workflows
 import (
 	"database/sql"
 	"fmt"
-	"github.com/lib/pq"
 	"github.com/nullstone-modules/mss-db-admin/sqlserver"
 	"log"
-	"strings"
 )
 
 func GrantDbAccess(db *sql.DB, appDb *sql.DB, user sqlserver.Role, database sqlserver.Database) error {
 	log.Printf("Granting user %q db access to %q\n", user.Name, database.Name)
-	if err := grantRole(db, user, database); err != nil {
-		return err
-	}
-	return grantAllPrivileges(appDb, user, database)
+	return grantAllPrivileges(appDb, user)
 }
 
-func grantRole(db *sql.DB, user sqlserver.Role, database sqlserver.Database) error {
-	if err := database.Read(db); err != nil {
-		return fmt.Errorf("unable to read database %q: %w", database.Name, err)
+func grantAllPrivileges(appDb *sql.DB, user sqlserver.Role) error {
+	// Create a database user mapped to the server login
+	createUserSql := fmt.Sprintf(
+		"IF NOT EXISTS (SELECT * FROM sys.database_principals WHERE name = %s) CREATE USER %s FOR LOGIN %s",
+		sqlserver.QuoteLiteral(user.Name),
+		sqlserver.QuoteIdentifier(user.Name),
+		sqlserver.QuoteIdentifier(user.Name),
+	)
+	if _, err := appDb.Exec(createUserSql); err != nil {
+		return fmt.Errorf("error creating database user %q: %w", user.Name, err)
 	}
 
-	newRoleGrant := sqlserver.RoleGrant{
-		Member: user.Name,
-		Target: database.Owner,
+	// Add user to built-in database roles for full access
+	roles := []string{"db_datareader", "db_datawriter", "db_ddladmin"}
+	for _, role := range roles {
+		sq := fmt.Sprintf("ALTER ROLE %s ADD MEMBER %s", sqlserver.QuoteIdentifier(role), sqlserver.QuoteIdentifier(user.Name))
+		if _, err := appDb.Exec(sq); err != nil {
+			return fmt.Errorf("error adding %q to role %q: %w", user.Name, role, err)
+		}
 	}
-	if err := newRoleGrant.Ensure(db); err != nil {
-		return fmt.Errorf("error granting role grant for %q to %q: %w", newRoleGrant.Member, newRoleGrant.Target, err)
-	}
-	return nil
-}
 
-func grantAllPrivileges(db *sql.DB, user sqlserver.Role, database sqlserver.Database) error {
-	sq := strings.Join([]string{
-		// CREATE | USAGE
-		fmt.Sprintf(`GRANT ALL PRIVILEGES ON SCHEMA public TO %s;`, pq.QuoteIdentifier(user.Name)),
-		// CREATE | CONNECT | TEMPORARY | TEMP
-		fmt.Sprintf(`GRANT ALL PRIVILEGES ON DATABASE %s TO %s;`, pq.QuoteIdentifier(database.Name), pq.QuoteIdentifier(user.Name)),
-	}, " ")
-
-	if _, err := db.Exec(sq); err != nil {
-		return fmt.Errorf("error granting privileges: %w", err)
+	// Grant execute on the dbo schema so the user can call stored procedures and functions
+	sq := fmt.Sprintf("GRANT EXECUTE ON SCHEMA::dbo TO %s", sqlserver.QuoteIdentifier(user.Name))
+	if _, err := appDb.Exec(sq); err != nil {
+		return fmt.Errorf("error granting execute on dbo to %q: %w", user.Name, err)
 	}
+
 	return nil
 }

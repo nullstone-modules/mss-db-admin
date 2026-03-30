@@ -3,13 +3,15 @@ package acc
 import (
 	"database/sql"
 	"testing"
+
+	_ "github.com/microsoft/go-mssqldb"
 )
 
 func createDb(t *testing.T) *sql.DB {
-	connUrl := "postgres://pda:pda@localhost:8432/postgres?sslmode=disable"
-	db, err := sql.Open("postgres", connUrl)
+	connUrl := "sqlserver://sa:YourStr0ng!Pass@localhost:1433?database=master"
+	db, err := sql.Open("sqlserver", connUrl)
 	if err != nil {
-		t.Fatalf("error connecting to postgres: %s", err)
+		t.Fatalf("error connecting to sql server: %s", err)
 	}
 	return db
 }

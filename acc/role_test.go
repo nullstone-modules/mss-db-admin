@@ -17,10 +17,10 @@ func TestRole(t *testing.T) {
 
 	role := sqlserver.Role{
 		Name:     "role-test-user",
-		Password: "role-test-password",
+		Password: "R0le!TestPass",
 	}
 	require.NoError(t, role.Create(db), "unexpected error")
 
 	find := &sqlserver.Role{Name: "role-test-user"}
-	require.NoError(t, find.Read(db), "read user")
+	require.NoError(t, find.Read(db), "read login")
 }

@@ -1,7 +1,7 @@
 org_name: nullstone
 name: aws-mss-db-admin
 friendly_name: Lambda for SqlServer Admin
-description: Create a lambda to administer a postgres database without the use of SSH Tunnel or VPN
+description: Create a lambda to administer a SQL Server database without the use of SSH Tunnel or VPN
 category: block
 subcategory: ""
 provider_types:
@@ -11,3 +11,5 @@ subplatform: ""
 type: ""
 appCategories: []
 is_public: true
+include:
+    - files/mss-db-admin.zip
