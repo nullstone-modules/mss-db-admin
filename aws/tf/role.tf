@@ -38,7 +38,7 @@ data "aws_iam_policy_document" "db_admin" {
     resources = [aws_secretsmanager_secret.db_admin_mss.arn]
     actions = [
       "secretsmanager:GetSecretValue",
-      "kms:Decrypt"
+      "kms:Decrypt",
     ]
   }
 }

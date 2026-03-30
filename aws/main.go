@@ -2,118 +2,47 @@ package main
 
 import (
 	"context"
-	"database/sql"
-	"fmt"
-	"net/url"
+	"encoding/json"
+	"log"
 	"os"
+	"time"
 
 	"github.com/aws/aws-lambda-go/lambda"
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/service/secretsmanager"
 	_ "github.com/microsoft/go-mssqldb"
+	"github.com/nullstone-modules/mss-db-admin/aws/secrets"
+	crud_invoke "github.com/nullstone-modules/mss-db-admin/crud-invoke"
 	"github.com/nullstone-modules/mss-db-admin/sqlserver"
-	"github.com/nullstone-modules/mss-db-admin/workflows"
 )
 
 const (
 	dbConnUrlSecretIdEnvVar = "DB_CONN_URL_SECRET_ID"
-
-	eventTypeCreateDatabase = "create-database"
-	eventTypeCreateUser     = "create-user"
-	eventTypeCreateDbAccess = "create-db-access"
 )
 
-type AdminEvent struct {
-	Type     string            `json:"type"`
-	Metadata map[string]string `json:"metadata"`
-}
-
 func main() {
-	lambda.Start(HandleRequest)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	connUrlSecretId := os.Getenv(dbConnUrlSecretIdEnvVar)
+	log.Printf("Retrieving connection url secret (%s)\n", connUrlSecretId)
+	connUrl, err := secrets.GetString(ctx, connUrlSecretId)
+	if err != nil {
+		log.Println(err.Error())
+	}
+
+	store := sqlserver.NewStore(connUrl)
+	defer store.Close()
+
+	lambda.Start(HandleRequest(store))
 }
 
-func HandleRequest(ctx context.Context, event AdminEvent) error {
-	connUrl, err := getConnectionUrl(ctx)
-	if err != nil {
-		return err
-	}
-
-	db, err := sql.Open("sqlserver", connUrl)
-	if err != nil {
-		return fmt.Errorf("error connecting to db: %w", err)
-	}
-	defer db.Close()
-
-	switch event.Type {
-	case eventTypeCreateDatabase:
-		newDatabase := sqlserver.Database{}
-		newDatabase.Name, _ = event.Metadata["databaseName"]
-		if newDatabase.Name == "" {
-			return fmt.Errorf("cannot create database: databaseName is required")
-		}
-		return workflows.EnsureDatabase(db, newDatabase)
-	case eventTypeCreateUser:
-		newUser := sqlserver.Role{}
-		newUser.Name, _ = event.Metadata["username"]
-		if newUser.Name == "" {
-			return fmt.Errorf("cannot create user: username is required")
-		}
-		newUser.Password, _ = event.Metadata["password"]
-		if newUser.Password == "" {
-			return fmt.Errorf("cannot create user: password is required")
-		}
-		return workflows.EnsureUser(db, newUser)
-	case eventTypeCreateDbAccess:
-		user := sqlserver.Role{}
-		user.Name, _ = event.Metadata["username"]
-		if user.Name == "" {
-			return fmt.Errorf("cannot grant user access to db: username is required")
-		}
-		database := sqlserver.Database{}
-		database.Name, _ = event.Metadata["databaseName"]
-		if database.Name == "" {
-			return fmt.Errorf("cannot grant user access to db: database name is required")
+func HandleRequest(store *sqlserver.Store) func(ctx context.Context, rawEvent json.RawMessage) (any, error) {
+	return func(ctx context.Context, rawEvent json.RawMessage) (any, error) {
+		if ok, event := crud_invoke.IsEvent(rawEvent); ok {
+			log.Println("Invocation (CRUD) Event", event.Tf.Action, event.Type)
+			return crud_invoke.Handle(ctx, event, store)
 		}
 
-		appDb, err := getAppDb(connUrl, database.Name)
-		if err != nil {
-			return fmt.Errorf("error connecting to app db %q: %w", database.Name, err)
-		}
-		defer appDb.Close()
-
-		return workflows.GrantDbAccess(db, appDb, user, database)
-	default:
-		return fmt.Errorf("unknown event %q", event.Type)
+		log.Println("Unknown Event", string(rawEvent))
+		return nil, nil
 	}
-}
-
-func getAppDb(connUrl string, databaseName string) (*sql.DB, error) {
-	u, err := url.Parse(connUrl)
-	if err != nil {
-		return nil, fmt.Errorf("invalid connection url: %w", err)
-	}
-	q := u.Query()
-	q.Set("database", databaseName)
-	u.RawQuery = q.Encode()
-	u.Path = ""
-
-	return sql.Open("sqlserver", u.String())
-}
-
-func getConnectionUrl(ctx context.Context) (string, error) {
-	awsConfig, err := config.LoadDefaultConfig(context.TODO())
-	if err != nil {
-		return "", fmt.Errorf("error accessing aws: %w", err)
-	}
-	sm := secretsmanager.NewFromConfig(awsConfig)
-	secretId := os.Getenv(dbConnUrlSecretIdEnvVar)
-	out, err := sm.GetSecretValue(ctx, &secretsmanager.GetSecretValueInput{SecretId: aws.String(secretId)})
-	if err != nil {
-		return "", fmt.Errorf("error accessing secret: %w", err)
-	}
-	if out.SecretString == nil {
-		return "", nil
-	}
-	return *out.SecretString, nil
 }

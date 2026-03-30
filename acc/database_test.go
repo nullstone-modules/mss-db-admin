@@ -1,10 +1,12 @@
 package acc
 
 import (
-	"github.com/nullstone-modules/mss-db-admin/sqlserver"
-	"github.com/stretchr/testify/require"
 	"os"
 	"testing"
+
+	"github.com/nullstone-modules/mss-db-admin/sqlserver"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestDatabase(t *testing.T) {
@@ -12,13 +14,16 @@ func TestDatabase(t *testing.T) {
 		t.Skip("Set ACC=1 to run e2e tests")
 	}
 
-	db := createDb(t)
-	defer db.Close()
+	store := createStore(t)
 
-	database := sqlserver.Database{Name: "database-test-database"}
-	require.NoError(t, database.Create(db), "unexpected error")
+	database := sqlserver.Database{Name: "database-test-db"}
+	result, err := store.Databases.Create(database)
+	require.NoError(t, err, "create database")
+	require.NotNil(t, result)
+	assert.Equal(t, "database-test-db", result.Name)
 
-	find := &sqlserver.Database{Name: "database-test-database"}
-	require.NoError(t, find.Read(db), "read database")
-	require.Equal(t, "database-test-database", find.Name)
+	found, err := store.Databases.Read("database-test-db")
+	require.NoError(t, err, "read database")
+	require.NotNil(t, found)
+	assert.Equal(t, "database-test-db", found.Name)
 }

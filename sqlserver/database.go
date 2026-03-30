@@ -2,55 +2,58 @@ package sqlserver
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 )
 
 type Database struct {
-	Name      string
-	Collation string
+	Name      string `json:"name"`
+	Collation string `json:"collation,omitempty"`
 }
 
-func (d Database) Create(db *sql.DB) error {
-	sq := fmt.Sprintf("CREATE DATABASE %s", QuoteIdentifier(d.Name))
-	if d.Collation != "" {
-		sq += fmt.Sprintf(" COLLATE %s", d.Collation)
-	}
-
-	log.Printf("Creating database %q\n", d.Name)
-	if _, err := db.Exec(sq); err != nil {
-		return fmt.Errorf("error creating database %q: %w", d.Name, err)
-	}
-	return nil
+func (d Database) Key() string {
+	return d.Name
 }
 
-func (d Database) Ensure(db *sql.DB) error {
-	if exists, err := d.Exists(db); exists {
-		log.Printf("database %q already exists\n", d.Name)
-		return nil
-	} else if err != nil {
-		return fmt.Errorf("error checking for database %q: %w", d.Name, err)
-	}
-	return d.Create(db)
+type Databases struct {
+	DbOpener DbOpener
 }
 
-func (d Database) Exists(db *sql.DB) (bool, error) {
-	var name string
-	err := db.QueryRow(`SELECT name FROM sys.databases WHERE name = @p1`, d.Name).Scan(&name)
-	if err == sql.ErrNoRows {
-		return false, nil
-	} else if err != nil {
-		return false, err
-	}
-	return true, nil
-}
-
-func (d *Database) Read(db *sql.DB) error {
-	var name string
-	err := db.QueryRow(`SELECT name FROM sys.databases WHERE name = @p1`, d.Name).Scan(&name)
+func (d *Databases) Create(obj Database) (*Database, error) {
+	db, err := d.DbOpener.OpenDatabase("")
 	if err != nil {
-		return err
+		return nil, err
 	}
-	d.Name = name
-	return nil
+
+	sq := fmt.Sprintf("CREATE DATABASE %s", QuoteIdentifier(obj.Name))
+	if obj.Collation != "" {
+		sq += fmt.Sprintf(" COLLATE %s", obj.Collation)
+	}
+
+	log.Printf("Creating database %q\n", obj.Name)
+	if _, err := db.Exec(sq); err != nil {
+		return nil, fmt.Errorf("error creating database %q: %w", obj.Name, err)
+	}
+	return d.Read(obj.Name)
 }
+
+func (d *Databases) Read(key string) (*Database, error) {
+	db, err := d.DbOpener.OpenDatabase("")
+	if err != nil {
+		return nil, err
+	}
+
+	var name, collation string
+	row := db.QueryRow(`SELECT name, collation_name FROM sys.databases WHERE name = @p1`, key)
+	if err := row.Scan(&name, &collation); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return &Database{Name: name, Collation: collation}, nil
+}
+
+func (d *Databases) Update(key string, obj Database) (*Database, error) { return d.Read(key) }
+func (d *Databases) Drop(key string) (bool, error)                      { return true, nil }
