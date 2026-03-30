@@ -4,9 +4,8 @@ resource "aws_lambda_function" "db_admin" {
   role             = aws_iam_role.db_admin.arn
   runtime          = "provided.al2023"
   handler          = "bootstrap"
-  filename          = "${path.module}/files/mss-db-admin.zip"
+  filename         = "${path.module}/files/mss-db-admin.zip"
   source_code_hash = filebase64sha256("${path.module}/files/mss-db-admin.zip")
-  // This can take ~5s to create a db sometimes
   timeout          = 10
 
   environment {
@@ -20,3 +19,4 @@ resource "aws_lambda_function" "db_admin" {
     subnet_ids         = var.network.subnet_ids
   }
 }
+

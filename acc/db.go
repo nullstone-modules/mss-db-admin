@@ -1,15 +1,16 @@
 package acc
 
 import (
-	"database/sql"
+	"github.com/nullstone-modules/mss-db-admin/sqlserver"
 	"testing"
+
+	_ "github.com/microsoft/go-mssqldb"
 )
 
-func createDb(t *testing.T) *sql.DB {
-	connUrl := "postgres://pda:pda@localhost:8432/postgres?sslmode=disable"
-	db, err := sql.Open("postgres", connUrl)
-	if err != nil {
-		t.Fatalf("error connecting to postgres: %s", err)
-	}
-	return db
+const connUrl = "sqlserver://sa:YourStr0ng!Pass@localhost:1433?database=master"
+
+func createStore(t *testing.T) *sqlserver.Store {
+	store := sqlserver.NewStore(connUrl)
+	t.Cleanup(func() { store.Close() })
+	return store
 }

@@ -35,16 +35,24 @@ variable "password" {
   type        = string
 }
 
+variable "is_prod_env" {
+  description = "Controls secret recovery window (7 days for prod, immediate deletion otherwise)"
+  type        = bool
+  default     = true
+}
+
 variable "network" {
   description = "Network configuration"
   type = object({
     vpc_id : string
     security_group_ids : list(string)
-    subnet_ids = list(string)
+    subnet_ids : list(string)
+    db_security_group_id : string
   })
   default = {
-    vpc_id             = ""
-    security_group_ids = []
-    subnet_ids         = []
+    vpc_id               = ""
+    security_group_ids   = []
+    subnet_ids           = []
+    db_security_group_id = ""
   }
 }

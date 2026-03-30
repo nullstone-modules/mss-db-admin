@@ -1,71 +1,68 @@
 package acc
 
 import (
-	"database/sql"
 	"fmt"
-	_ "github.com/lib/pq"
+	_ "github.com/microsoft/go-mssqldb"
 	"github.com/nullstone-modules/mss-db-admin/sqlserver"
-	"github.com/nullstone-modules/mss-db-admin/workflows"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"net/url"
 	"os"
 	"strings"
 	"testing"
-	"time"
 )
 
-// TestFull tests the entire workflow of create-database, create-user, create-db-access
+// TestFull tests the entire CRUD workflow:
+// create database -> create login -> grant access -> connect as user -> create table -> insert -> query
 func TestFull(t *testing.T) {
 	if os.Getenv("ACC") != "1" {
 		t.Skip("Set ACC=1 to run e2e tests")
 	}
 
-	connUrl := "postgres://pda:pda@localhost:8432/postgres?sslmode=disable"
-	db, err := sql.Open("postgres", connUrl)
-	require.NoError(t, err, "connecting to postgres")
-	defer db.Close()
-	appConnUrl := "postgres://test-user:test-password@localhost:8432/test-database?sslmode=disable"
-	appDb, err := sql.Open("postgres", appConnUrl)
-	defer appDb.Close()
-	fmt.Println(appDb.Ping())
+	store := createStore(t)
 
-	newDatabase := sqlserver.Database{
-		Name:  "test-database",
-		Owner: "test-database",
-	}
-	newUser := sqlserver.Role{
-		Name:     "test-user",
-		Password: "test-password",
-	}
+	dbName := "full-test-db"
+	loginName := "full-test-user"
+	loginPass := "Full!Test0Pass"
 
-	require.NoError(t, workflows.EnsureDatabase(db, newDatabase), "ensure database")
-	require.NoError(t, workflows.EnsureUser(db, newUser), "ensure user")
-	require.NoError(t, workflows.GrantDbAccess(db, appDb, newUser, newDatabase), "grant db access")
+	// Create the database
+	_, err := store.Databases.Create(sqlserver.Database{Name: dbName})
+	require.NoError(t, err, "create database")
 
-	time.Sleep(500 * time.Millisecond)
+	// Create the login
+	_, err = store.Logins.Create(sqlserver.Login{Name: loginName, Password: loginPass})
+	require.NoError(t, err, "create login")
 
-	// Attempt connection to newly-created app db
-	u, _ := url.Parse(connUrl)
-	u.Path = "/test-database"
-	u.User = url.UserPassword(newUser.Name, newUser.Password)
+	// Grant access
+	_, err = store.DatabaseAccess.Create(sqlserver.DatabaseAccess{Database: dbName, Login: loginName})
+	require.NoError(t, err, "grant database access")
 
-	// Attempt to create schema objects
-	_, err = appDb.Exec("CREATE TABLE todos ( id SERIAL NOT NULL, name varchar(255) );")
+	// Connect as the new user to the app database
+	userConnUrl := fmt.Sprintf("sqlserver://%s:%s@localhost:1433?database=%s",
+		url.PathEscape(loginName),
+		url.PathEscape(loginPass),
+		url.PathEscape(dbName),
+	)
+	userDb, err := sqlserver.OpenDatabase(userConnUrl, "")
+	require.NoError(t, err, "connecting as app user")
+	defer userDb.Close()
+
+	// Create a table
+	_, err = userDb.Exec("CREATE TABLE todos ( id INT IDENTITY(1,1) NOT NULL, name varchar(255) );")
 	require.NoError(t, err, "create table")
 
-	// Attempt to insert records
+	// Insert records
 	sq := strings.Join([]string{
 		`INSERT INTO todos (name) VALUES ('item1');`,
 		`INSERT INTO todos (name) VALUES ('item2');`,
 		`INSERT INTO todos (name) VALUES ('item3');`,
-	}, "")
-	_, err = appDb.Exec(sq)
+	}, " ")
+	_, err = userDb.Exec(sq)
 	require.NoError(t, err, "insert todos")
 
-	// Attempt to retrieve them
+	// Query records
 	results := make([]string, 0)
-	rows, err := appDb.Query(`SELECT * FROM todos`)
+	rows, err := userDb.Query(`SELECT id, name FROM todos ORDER BY id`)
 	require.NoError(t, err, "query todos")
 	defer rows.Close()
 	for rows.Next() {
