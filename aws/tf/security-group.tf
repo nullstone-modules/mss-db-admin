@@ -20,6 +20,19 @@ resource "aws_security_group_rule" "this-to-db" {
   from_port                = var.port
   to_port                  = var.port
   source_security_group_id = var.network.db_security_group_id
+
+  count = var.network.db_security_group_id == "" ? 0 : 1
+}
+
+resource "aws_security_group_rule" "this-to-public-db" {
+  security_group_id = aws_security_group.db_admin.id
+  protocol          = "tcp"
+  type              = "egress"
+  from_port         = var.port
+  to_port           = var.port
+  cidr_blocks       = ["0.0.0.0/0"]
+
+  count = var.network.db_security_group_id == "" ? 1 : 0
 }
 
 resource "aws_security_group_rule" "db-from-this" {
@@ -29,4 +42,6 @@ resource "aws_security_group_rule" "db-from-this" {
   from_port                = var.port
   to_port                  = var.port
   source_security_group_id = aws_security_group.db_admin.id
+
+  count = var.network.db_security_group_id == "" ? 0 : 1
 }
