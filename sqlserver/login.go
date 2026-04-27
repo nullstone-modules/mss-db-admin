@@ -21,7 +21,7 @@ type Logins struct {
 }
 
 func (r *Logins) Create(obj Login) (*Login, error) {
-	db, err := r.DbOpener.OpenDatabase("")
+	db, err := r.DbOpener.OpenDatabase("master")
 	if err != nil {
 		return nil, err
 	}
@@ -35,7 +35,7 @@ func (r *Logins) Create(obj Login) (*Login, error) {
 }
 
 func (r *Logins) Read(key string) (*Login, error) {
-	db, err := r.DbOpener.OpenDatabase("")
+	db, err := r.DbOpener.OpenDatabase("master")
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +56,7 @@ func (r *Logins) Update(key string, obj Login) (*Login, error) {
 		return r.Read(key)
 	}
 
-	db, err := r.DbOpener.OpenDatabase("")
+	db, err := r.DbOpener.OpenDatabase("master")
 	if err != nil {
 		return nil, err
 	}

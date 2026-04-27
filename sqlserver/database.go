@@ -21,7 +21,7 @@ type Databases struct {
 }
 
 func (d *Databases) Create(obj Database) (*Database, error) {
-	db, err := d.DbOpener.OpenDatabase("")
+	db, err := d.DbOpener.OpenDatabase("master")
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +39,7 @@ func (d *Databases) Create(obj Database) (*Database, error) {
 }
 
 func (d *Databases) Read(key string) (*Database, error) {
-	db, err := d.DbOpener.OpenDatabase("")
+	db, err := d.DbOpener.OpenDatabase("master")
 	if err != nil {
 		return nil, err
 	}
