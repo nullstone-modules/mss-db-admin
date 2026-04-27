@@ -10,6 +10,10 @@ import (
 type Login struct {
 	Name     string `json:"name"`
 	Password string `json:"password,omitempty"`
+
+	// Do not error if trying to create a database that already exists
+	// Instead, read the existing and return
+	UseExisting bool `json:"useExisting"`
 }
 
 func (l Login) Key() string {
@@ -21,6 +25,15 @@ type Logins struct {
 }
 
 func (r *Logins) Create(obj Login) (*Login, error) {
+	if obj.UseExisting {
+		if existing, err := r.Read(obj.Name); err != nil {
+			return nil, err
+		} else if existing != nil {
+			log.Printf("[Create] Login %q already exists, updating...\n", obj.Name)
+			return r.Update(obj.Name, obj)
+		}
+	}
+
 	db, err := r.DbOpener.OpenDatabase("master")
 	if err != nil {
 		return nil, err

@@ -10,6 +10,10 @@ import (
 type Database struct {
 	Name      string `json:"name"`
 	Collation string `json:"collation,omitempty"`
+
+	// Do not error if trying to create a database that already exists
+	// Instead, read the existing and return
+	UseExisting bool `json:"useExisting"`
 }
 
 func (d Database) Key() string {
@@ -21,6 +25,15 @@ type Databases struct {
 }
 
 func (d *Databases) Create(obj Database) (*Database, error) {
+	if obj.UseExisting {
+		if existing, err := d.Read(obj.Name); err != nil {
+			return nil, err
+		} else if existing != nil {
+			log.Printf("[Create] Database %q already exists, updating...\n", obj.Name)
+			return d.Update(obj.Name, obj)
+		}
+	}
+
 	db, err := d.DbOpener.OpenDatabase("master")
 	if err != nil {
 		return nil, err
