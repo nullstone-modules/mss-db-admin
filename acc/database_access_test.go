@@ -53,3 +53,59 @@ func TestDatabaseAccess(t *testing.T) {
 	require.NoError(t, err, "revoke database access")
 	assert.True(t, ok)
 }
+
+// TestDatabaseAccess_RepairsDrift verifies that when access is manually damaged out-of-band
+// (a role membership is dropped), Read reports the access as not provisioned so Terraform
+// detects drift, and that re-running Create restores full access.
+func TestDatabaseAccess_RepairsDrift(t *testing.T) {
+	if os.Getenv("ACC") != "1" {
+		t.Skip("Set ACC=1 to run e2e tests")
+	}
+
+	store := createStore(t)
+
+	dbName := "drift-test-db"
+	loginName := "drift-test-user"
+
+	_, err := store.Databases.Create(sqlserver.Database{Name: dbName})
+	require.NoError(t, err, "create database")
+
+	_, err = store.Logins.Create(sqlserver.Login{Name: loginName, Password: "Dr1ft!TestPass"})
+	require.NoError(t, err, "create login")
+
+	key := sqlserver.DatabaseAccessKey{Database: dbName, Login: loginName}
+	access := sqlserver.DatabaseAccess{Database: dbName, Login: loginName}
+
+	_, err = store.DatabaseAccess.Create(access)
+	require.NoError(t, err, "grant database access")
+
+	// Access is fully provisioned: Read finds it.
+	found, err := store.DatabaseAccess.Read(key)
+	require.NoError(t, err, "read after grant")
+	require.NotNil(t, found, "access should be reported as provisioned after grant")
+
+	// Damage access out-of-band: drop one role membership directly.
+	db, err := store.OpenDatabase(dbName)
+	require.NoError(t, err, "open database")
+	_, err = db.Exec("ALTER ROLE " + sqlserver.QuoteIdentifier("db_datawriter") +
+		" DROP MEMBER " + sqlserver.QuoteIdentifier(loginName))
+	require.NoError(t, err, "manually drop role membership")
+
+	// Read now reports drift (not provisioned) because a required role is missing.
+	found, err = store.DatabaseAccess.Read(key)
+	require.NoError(t, err, "read after damage")
+	assert.Nil(t, found, "damaged access should be reported as not provisioned")
+
+	// Re-running Create repairs the access.
+	_, err = store.DatabaseAccess.Create(access)
+	require.NoError(t, err, "repair database access")
+
+	found, err = store.DatabaseAccess.Read(key)
+	require.NoError(t, err, "read after repair")
+	require.NotNil(t, found, "access should be reported as provisioned after repair")
+
+	// Cleanup
+	ok, err := store.DatabaseAccess.Drop(key)
+	require.NoError(t, err, "revoke database access")
+	assert.True(t, ok)
+}

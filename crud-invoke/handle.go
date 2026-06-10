@@ -70,6 +70,8 @@ func (h Crud[TKey, T]) Handle(action string, raw json.RawMessage) (any, error) {
 	switch action {
 	case "create":
 		return h.DataAccess.Create(obj)
+	case "read":
+		return h.DataAccess.Read(obj.Key())
 	case "update":
 		return h.DataAccess.Update(obj.Key(), obj)
 	case "delete":
